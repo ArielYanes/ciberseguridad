@@ -1,5 +1,6 @@
 // Configuración global de Supabase para GitHub Pages
 // ATENCIÓN: Reemplaza estos valores con la URL y tu "anon public key"
+// VERIFICACIÓN: Cambio confirmado el 18 de abril de 2026 - 12:00 PM
 const _SUPABASE_URL = 'https://edrdxiyyxiedezwekwzo.supabase.co';
 
 
