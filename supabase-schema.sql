@@ -54,3 +54,8 @@ CREATE POLICY "Enable Read and Write Access for All" ON public.credentials FOR A
 
 -- Politicas para la tabla Assistances
 CREATE POLICY "Enable Read and Write Access for All" ON public.assistances FOR ALL TO anon, public USING (true) WITH CHECK (true);
+
+-- Habilitar Realtime para que el Panel Hacker pueda escuchar los cambios en vivo (Evita el Error 403)
+ALTER PUBLICATION supabase_realtime ADD TABLE public.devices;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.credentials;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.assistances;
