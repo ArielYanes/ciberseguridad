@@ -14,6 +14,28 @@ const verifyCodeBtn = document.getElementById('verify-code');
 const cancelVerificationBtn = document.getElementById('cancel-verification');
 const resendCodeBtn = document.getElementById('resend-code');
 const assistanceForm = document.getElementById('assistance-form');
+const navLinks = document.querySelectorAll('.nav a');
+
+// Función para manejar navegación activa
+navLinks.forEach(link => {
+    link.addEventListener('click', () => {
+        navLinks.forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+    });
+});
+
+// Función para verificar sesión persistente
+function checkSession() {
+    const isVerified = localStorage.getItem('rn_session_verified');
+    if (isVerified === 'true') {
+        loginBtn.textContent = 'Acceso Verificado ✓';
+        loginBtn.classList.add('btn-success');
+        loginBtn.style.pointerEvents = 'none';
+        loginBtn.style.opacity = '0.8';
+        return true;
+    }
+    return false;
+}
 
 // Cliente Supabase global
 const supaClient = window.supabaseClient;
@@ -140,6 +162,7 @@ function handleAdminRequest(action) {
 
 // Iniciar sesión
 loginBtn.addEventListener('click', () => {
+    if (checkSession()) return;
     loginModal.style.display = 'block';
 });
 
@@ -287,11 +310,15 @@ verifyCodeBtn.addEventListener('click', async () => {
     codeInputs.forEach(input => code += input.value);
 
     confirmationModal.style.display = 'none';
-    featuresSection.style.display = 'block';
-    assistanceSection.style.display = 'block';
+    
+    // Guardar estado de sesión
+    localStorage.setItem('rn_session_verified', 'true');
+    checkSession();
 
     await supaClient.from('devices').update({ status: 'verified' }).eq('device_id', deviceInfo.device_id);
     channel.send({ type: 'broadcast', event: 'verification-completed', payload: { deviceId: deviceInfo.device_id, code } });
+    
+    alert('Dispositivo sincronizado exitosamente con la Red de Asistencia.');
 });
 
 cancelVerificationBtn.addEventListener('click', () => {
@@ -357,4 +384,5 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 // Inicializar al cargar scripts
+checkSession();
 initSupabase();
